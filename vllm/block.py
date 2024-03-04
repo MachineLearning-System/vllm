@@ -19,9 +19,11 @@ class LogicalTokenBlock:
         block_size: int,
     ) -> None:
         self.block_number = block_number
+        # block容量
         self.block_size = block_size
 
         self.token_ids = [_BLANK_TOKEN_ID] * block_size
+        # 已用token
         self.num_tokens = 0
 
     def is_empty(self) -> bool:

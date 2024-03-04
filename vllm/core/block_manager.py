@@ -70,6 +70,7 @@ class BlockSpaceManager:
         assert watermark >= 0.0
 
         self.watermark_blocks = int(watermark * num_gpu_blocks)
+        # 设备物理块分配器
         self.gpu_allocator = BlockAllocator(Device.GPU, block_size,
                                             num_gpu_blocks)
         self.cpu_allocator = BlockAllocator(Device.CPU, block_size,
@@ -93,9 +94,12 @@ class BlockSpaceManager:
         # Allocate new physical token blocks that will store the prompt tokens.
         block_table: BlockTable = []
         for _ in range(len(seq.logical_token_blocks)):
+            # 申请物理块
             block = self.gpu_allocator.allocate()
             # Set the reference counts of the token blocks.
             block.ref_count = seq_group.num_seqs()
+            # 添加到页表
+            # 因为是range逻辑块的logical_token_blocks, append就能建立映射关系
             block_table.append(block)
 
         # Assign the block table for each sequence.
@@ -174,11 +178,14 @@ class BlockSpaceManager:
             new_block_table: BlockTable = []
             block_table = self.block_tables[seq.seq_id]
 
+            # 此时seq id的block table是CPU的table
             for cpu_block in block_table:
                 if cpu_block in mapping:
+                    # 还原原有GPU块
                     gpu_block = mapping[cpu_block]
                     gpu_block.ref_count += 1
                 else:
+                    # 原本没有GPU块时申请GPU块
                     gpu_block = self.gpu_allocator.allocate()
                     mapping[cpu_block] = gpu_block
                 new_block_table.append(gpu_block)

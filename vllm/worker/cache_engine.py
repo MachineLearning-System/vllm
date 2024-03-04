@@ -37,6 +37,7 @@ class CacheEngine:
         self.num_cpu_blocks = cache_config.num_cpu_blocks
 
         # Initialize the cache.
+        # NOTE: 以layer为单位, 申请大块的tensor作为cache
         self.gpu_cache = self.allocate_gpu_cache()
         self.cpu_cache = self.allocate_cpu_cache()
 
@@ -110,6 +111,7 @@ class CacheEngine:
                 src_key_cache, src_value_cache = src[i]
                 dst_key_cache, dst_value_cache = dst[i]
                 # Copy the key blocks.
+                # TODO: review, 在csrc中
                 cache_ops.swap_blocks(
                     src_key_cache, dst_key_cache, src_to_dst)
                 # Copy the value blocks.

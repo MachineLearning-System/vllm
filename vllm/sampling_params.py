@@ -55,7 +55,9 @@ class SamplingParams:
         max_tokens: int = 16,
         logprobs: Optional[int] = None,
     ) -> None:
+        # 返回的sequence的数量(从best_of中选择)
         self.n = n
+        # 生成的sequence的数量
         self.best_of = best_of if best_of is not None else n
         self.presence_penalty = presence_penalty
         self.frequency_penalty = frequency_penalty

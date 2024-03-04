@@ -158,6 +158,9 @@ class Sequence:
 
 
 class SequenceGroup:
+    """
+    用一个prompt生成多个sequence, 用SequenceGroup封装
+    """
 
     def __init__(
         self,

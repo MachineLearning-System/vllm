@@ -103,6 +103,10 @@ class Scheduler:
         return len(self.waiting) + len(self.running) + len(self.swapped)
 
     def _schedule(self) -> Tuple[SchedulerOutputs, List[str]]:
+        '''
+        返回要in/out/copy的block, 以及新加载的seq(及prompt部分)
+        '''
+
         # Blocks that need to be swaped or copied before model execution.
         blocks_to_swap_in: Dict[int, int] = {}
         blocks_to_swap_out: Dict[int, int] = {}
@@ -124,6 +128,7 @@ class Scheduler:
         preempted: List[SequenceGroup] = []
         while self.running:
             seq_group = self.running.pop(0)
+            # NOTE: 无法插入时不断swap out让出空间
             while not self.block_manager.can_append_slot(seq_group):
                 if self.running:
                     # Preempt the lowest-priority sequence groups.
@@ -140,9 +145,12 @@ class Scheduler:
                 # Append new slots to the sequence group.
                 self._append_slot(seq_group, blocks_to_copy)
                 running.append(seq_group)
+
+        # NOTE: 更新running队列
         self.running = running
 
         # Swap in the sequence groups in the SWAPPED state if possible.
+        # NOTE: 尽可能填满running队列
         self.swapped = self.policy.sort_by_priority(now, self.swapped)
         while self.swapped and not blocks_to_swap_out:
             seq_group = self.swapped[0]
@@ -161,6 +169,7 @@ class Scheduler:
                 break
 
             seq_group = self.swapped.pop(0)
+            # NOTE: 换入seq_group, 记录要换入的block和要copy的block
             self._swap_in(seq_group, blocks_to_swap_in)
             self._append_slot(seq_group, blocks_to_copy)
             self.running.append(seq_group)
@@ -176,6 +185,8 @@ class Scheduler:
         # prioritized over the sequence groups in the WAITING state.
         # This is because we want to bound the amount of CPU memory taken by
         # the swapped sequence groups.
+        # NOTE: 加载swapped的seq后仍然有空闲资源, 则加载waiting的seq
+        # 尽量填满running队列
         if not self.swapped:
             # Optimization: We do not sort the waiting queue since the preempted
             # sequence groups are added to the front and the new sequence groups
@@ -260,6 +271,7 @@ class Scheduler:
         # Schedule sequence groups.
         # This function call changes the internal states of the scheduler
         # such as self.running, self.swapped, and self.waiting.
+        # NOTE: 需要操作的block, 新加载的prompt
         scheduler_outputs, prompt_group_ids = self._schedule()
 
         # Create input data structures.
@@ -291,7 +303,11 @@ class Scheduler:
         # Update the running sequences and free blocks.
         for seq_group in self.running:
             # Process beam search results before processing the new tokens.
+            # TODO: review beam search!!!
             for seq in seq_group.get_seqs(status=SequenceStatus.RUNNING):
+                # NOTE: 如果seq不是他的output的parent
+                # 给output找到parent, 并从parent fork出来一个新的seq
+                # 因为seq是fork出来的, 所以旧的seq可以free
                 output = seq_outputs[seq.seq_id]
                 if seq.seq_id != output.parent_seq_id:
                     # The sequence is a fork of the parent sequence (beam search).

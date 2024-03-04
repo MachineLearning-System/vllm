@@ -19,8 +19,11 @@ class CompletionOutput:
 
     def __init__(
         self,
+        # 在request中的索引, 一个request中可能有多个output
         index: int,
+        # 结果文本
         text: str,
+        # 结果文本的token id
         token_ids: List[int],
         cumulative_logprob: float,
         logprobs: Optional[List[Dict[int, float]]],
@@ -66,6 +69,7 @@ class RequestOutput:
         self.prompt_token_ids = prompt_token_ids
         self.outputs = outputs
 
+    # 从SequenceGroup中创建RequestOutput
     @classmethod
     def from_seq_group(cls, seq_group: SequenceGroup) -> "RequestOutput":
         # Get the top-n sequences.

@@ -63,6 +63,8 @@ __global__ void copy_blocks_kernel(
   int src_block_number = block_mapping[2 * pair_idx];
   int dst_block_number = block_mapping[2 * pair_idx + 1];
 
+  // threadIdx.x用来索引thread负责拷贝的元素s
+  // 每个thread负责一部分元素的拷贝
   const int src_block_offset = src_block_number * numel_per_block;
   const int dst_block_offset = dst_block_number * numel_per_block;
   for (int i = threadIdx.x; i < numel_per_block; i += blockDim.x) {
@@ -100,6 +102,7 @@ void copy_blocks(
     value_cache_ptrs[layer_idx] = reinterpret_cast<int64_t>(value_caches[layer_idx].data_ptr());
   }
   // Create block mapping array.
+  // NOTE: block number组织成src, dst, src, dst的形式
   std::vector<int> block_mapping_vec;
   for (const auto& pair : block_mapping) {
     int src_block_number = pair.first;
@@ -113,6 +116,10 @@ void copy_blocks(
 
   // Move the data structures to the GPU.
   // NOTE: This synchronizes the CPU and GPU.
+
+  // from_blob直接将ptr转换成tensor
+  // 这里只是将vec变成tensor的形式: vec[ptr, ptr, ptr] -> tensor(ptr, ptr, ptr)
+  // 这么做是使用torch的API来做H2D比较方便
   torch::Tensor key_cache_ptrs_tensor = torch::from_blob(
     key_cache_ptrs, {num_layers}, torch::kInt64).to(cache_device);
   torch::Tensor value_cache_ptrs_tensor = torch::from_blob(
@@ -121,8 +128,14 @@ void copy_blocks(
     block_mapping_array, {2 * num_pairs}, torch::kInt).to(cache_device);
 
   // Launch the kernel.
+  // NOTE: cache.shape = (num_gpu_blocks, *key_block_shape)
+  // 获取一个block的元素数
   const int numel_per_block = key_caches[0][0].numel();
+  // NOTE: 层数, 每层需要的拷贝数
   dim3 grid(num_layers, num_pairs);
+  // NOTE: 每个thread负责一个element / 一组元素的拷贝
+  // 当每个block中元素数小于1024时, thread将负责一端元素的拷贝
+  // 每个thread block负责一个block的拷贝
   dim3 block(std::min(1024, numel_per_block));
   const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
   AT_DISPATCH_FLOATING_TYPES_AND2(

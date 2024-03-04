@@ -179,6 +179,8 @@ class LLMEngine:
         # Create the sequences.
         block_size = self.cache_config.block_size
         seqs: List[Sequence] = []
+        # NOTE: best_of: Number of output sequences that are generated from the prompt.
+        # 一个prompt同时生成多个结果
         for _ in range(sampling_params.best_of):
             seq_id = next(self.seq_counter)
             seq = Sequence(seq_id, prompt, prompt_token_ids, block_size)
@@ -300,6 +302,7 @@ class LLMEngine:
         """Runs the given method on all workers."""
         all_outputs = []
         for worker in self.workers:
+            # NOTE: Worker.execute_model()
             executor = getattr(worker, method)
             if self.parallel_config.worker_use_ray:
                 executor = executor.remote

@@ -143,6 +143,7 @@ class Worker:
             if not seq_group_metadata.is_prompt:
                 continue
 
+            # NOTE: 添加新加载的prompt seq
             seq_ids = list(seq_group_metadata.seq_data.keys())
             sampling_params = seq_group_metadata.sampling_params
             seq_groups.append((seq_ids, sampling_params))
