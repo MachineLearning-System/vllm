@@ -133,22 +133,29 @@ class Worker:
         seq_group_metadata_list: List[SequenceGroupMetadata],
     ) -> Tuple[torch.Tensor, torch.Tensor, InputMetadata]:
         seq_groups: List[Tuple[List[int], SamplingParams]] = []
+        # [prompt_token1 | prompt_token2 | ...]
+        # prompt数据平铺开, 通过len索引
         input_tokens: List[int] = []
+        # [prompt_pid1 | prompt_pitd | ...]
         input_positions: List[int] = []
         slot_mapping: List[int] = []
 
         # Add prompt tokens.
+        # [prompt_len1, prompt_len2, ...]
+        # NOTE: 先添加prompt seq
         prompt_lens: List[int] = []
         for seq_group_metadata in seq_group_metadata_list:
             if not seq_group_metadata.is_prompt:
                 continue
 
             # NOTE: 添加新加载的prompt seq
+            # keys -> seq_id
             seq_ids = list(seq_group_metadata.seq_data.keys())
             sampling_params = seq_group_metadata.sampling_params
             seq_groups.append((seq_ids, sampling_params))
 
             # Use any sequence in the group.
+            # NOTE: 首次prompt只有一个seq
             seq_id = seq_ids[0]
 
             seq_data = seq_group_metadata.seq_data[seq_id]
@@ -176,6 +183,7 @@ class Worker:
                 slot_mapping.append(slot)
 
         # Add generation tokens.
+        # NOTE: 再添加decoding seq
         max_context_len = 0
         max_num_blocks_per_seq = 0
         context_lens: List[int] = []
@@ -188,6 +196,7 @@ class Worker:
             sampling_params = seq_group_metadata.sampling_params
             seq_groups.append((seq_ids, sampling_params))
 
+            # 插入所有seq的最新(最后一个)token
             for seq_id in seq_ids:
                 seq_data = seq_group_metadata.seq_data[seq_id]
                 generation_token = seq_data.get_last_token_id()

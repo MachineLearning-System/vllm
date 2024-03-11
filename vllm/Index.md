@@ -101,16 +101,20 @@ outputs = llm.generate(prompts, sampling_params)
 
 ## 目录结构
 
-- core/
+roadmap
+
+- [x] core/
     * 块管理
     * 调度器
-- engine/
+- [ ] engine/
     * vllm框架顶层的交互逻辑: 推理的主循环
-- entrypoints/
-- model_executor/
+- [ ] entrypoints/
+- [ ] model_executor/
     * vllm支持的模型
-- worker/
-- 基本数据结构抽象:
+- [x] worker/
+    - cache engine
+    - worker
+- [x] 基本数据结构抽象:
     * block
     * sequence: 一个完整的输入/输出的表示
 
@@ -200,18 +204,20 @@ outputs = llm.generate(prompts, sampling_params)
     * 通过cache的指针 + offset索引block数据位置
     * 使用cudaMemcpyAsync拷贝
 - copy
-    * TODO: 怎么拷贝的
-    * TODO:
+    + 使用pytorch API来简化显存申请释放的流程, 然后简单的`value[] = value[]`
+    * QA:
         + **copy是copy什么**
             + 对一个block添加token时发现block有共用, 此时触发copy on write。得到旧block的src和新block的dst
         + 处理换入换出为什么还有copy
             + 为了处理COW的情况
+        * 怎么拷贝的
+            + 简单的`value[] = value[]`
 
 
 
 ## scheduler.py
 
-TODO:
+> 调度器管理和返回需要操作的block的id, 具体的换入换出传递到执行器执行
 
 - PreemptionMode
 - SchedulerOutputs: dataclass, 封装调度的结果, 换入换出了哪些块
@@ -224,6 +230,20 @@ TODO:
         + 每次step调用一下`schedule()`, 获取要**执行的seq和要操作的block**
         + `schedule() -> _schedule()`更新running队列, 尽可能用满, 有空闲时就可以加载swapped的和waiting的seq
         + `schedule()`返回要执行的sequence和要操作的block
+
+
+## worker.py
+
+- `profile_num_available_blocks()`
+    * 探测最大可以用来做cache的block数
+- `_prepare_inputs()`
+    * 将seq的索引组织成平坦的数据, 以便传入模型
+    * 对于新prompt, group中所有seq一样, 插入首个seq的完整的token
+    * 对于decoding, 多个seq产生了各自token, 插入各个seq的最新token(最后一个token)
+- `execute_model()`: 执行器
+    1. 操作要操作的block(换入, 换出, 拷贝)
+    2. `prepare_input`, 将数据平坦化以便传入model执行
+    3. 执行model
 
 
 ## swap in/swap out/copy细节
@@ -245,18 +265,19 @@ TODO:
         + 更新running队列: 调度新sequence来执行
             1. 没有空闲块时要替换sequence, 不断swap out直到可以容纳新sequence, 填充要swap的block
             2. 新running队列插入新sequence, 填充需要拷贝的block
-                a. TODO block to copy的意思
             3. 更新当前running队列为新running队列
         + 更新swapped队列: 尽可能填满running队列, 有空闲时把之前换出的seq也换入执行
             + 记录要换入的block和要copy的block
         + 更新waiting队列: 如果swapped的seq加入后仍有空闲, 加载waiting的seq, 分配资源
-            + TODO: 加载waiting的seq在那申请的资源
+            + Q: 加载waiting的seq在哪申请的资源? `model().cuda()`
         + **遍历running队列**, 整理出当前step要执行的seq, 和需要操作的block
     * run worker: 执行seq, 操作block
         + 真正操作block, 该换入的换入, 该换出的换出
             + 具体的换入换出操作细节在其他章节讨论
         + ⭐**`_prepare_inputs`**
-            + TODO
+            + 将新prompt的token和decoding的token合并平铺在一起
+            + 一个新prompt对应一个seq group中所有的seq是一样的, 把其所有token插入input即可
+            + 正在decoding的seq group各自生成了新的的token, 将各个seq中的最新token加入input即可
     * 更新schedule: `update()`
         + 处理beam search
             + TODO
